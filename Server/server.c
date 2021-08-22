@@ -81,30 +81,74 @@ void send_to_all(char *s, int uid){
   pthread_mutex_unlock(&clients_mutex);
 }
 
+void send_to(char *s, int uid){
+  pthread_mutex_lock(&clients_mutex);
+
+  for(int i=0; i<MAX_CLIENTS; i++){
+    if(clients[i]){
+      if(clients[i]->uid == uid){
+	write(clients[i]->sockfd, s, strlen(s));
+      }
+    }
+  }
+  pthread_mutex_unlock(&clients_mutex);
+}
+
+int log_in(clientStr *client){  
+  char buffer[BUFFER_SIZE];
+  int done_flag = 0;
+  while(1){
+    if(done_flag){
+      break;
+    }
+    //int receive = recv(client->sockfd, buffer, BUFFER_SIZE, 0);
+    if(recv(cli->sockfd, uName, 32, 0) <= 0){
+      printf("ERROR: RECEIVE.\n");
+    }
+    else if(strlen(uName) <  2 || strlen(uName) >= 32-1){
+      printf("ERROR: Incorrect username.\n");
+    }
+    else{
+      strcpy(client->user->username, uName);
+      sprintf(buffer, "%s has joined\n", client->user->username);
+      printf("%s", buffer);
+      send_to_all(buffer, client->uid);
+      done_flag = 1;
+    }
+    bzero(buffer, BUFFER_SIZE);
+  }
+  return 1;
+}
+
 void *handle_client(void *arg){
   
   clientStr *client = (clientStr*)arg;
   client->user = (userStr *)malloc(sizeof(userStr));
   //userStr *currentUser = (userStr *)malloc(sizeof(userStr));
   //client->user = currentUser;
-  //login --TODO--
   
-  //after log-in
-  char buffer[BUFFER_SIZE];  
-  int connected_flag = 1;
+  int logInFlag = log_in(client);
+  int connected_flag = 0;
+
+  if(logInFlag){
+    char buffer[BUFFER_SIZE];  
+    connected_flag = 1;
+  }
   clientNumber++;
   while(1){
-    if(!connected_flag){
+    if(connected_flag != 1){
       break;
     }
     int receive = recv(client->sockfd, buffer, BUFFER_SIZE, 0);
+
     //vari if ecc --TODO--
     send_to_all(buffer, client->uid);
+
+    
     printf("message sent: %s", buffer);
-
     bzero(buffer, BUFFER_SIZE);
-
   }
+  
   close(client->sockfd);
   remove_client(client);
   free(client->user);
