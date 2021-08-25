@@ -19,18 +19,50 @@ volatile sig_atomic_t flag = 0;
 int sockfd = 0;
 char uName[USER_DATA_LENGTH];
 
-void ctrl_c_exit(){
-  flag = 1;
+void my_exit(){
+  //flag = 1;
+  close(sockfd);
   exit(0);
 }
 
 void msg_trim (char* arr, int length) {
   int i;
-  for (i = 0; i < length; i++) { // trim \n
+  for (i = 0; i < length; i++) { 
     if (arr[i] == '\n') {
       arr[i] = '\0';
       break;
     }
+  }
+}
+
+void recv_handler (){
+  char message[LENGTH];
+  while(1){
+    int receive = recv(sockfd, message, LENGTH, 0);
+    if (receive > 0){
+      printf("%s", message);
+    }
+    else if(receive == 0){
+      my_exit();
+      break;
+    }
+    bzero(message, LENGTH);
+  }
+}
+
+void send_handler(){
+  char message[LENGTH];
+  
+  while(1){
+    fgets(message, LENGTH, stdin);
+    msg_trim(message, strlen(message));
+    if (strcmp(message, "exit") == 0) {
+      break;
+    }
+    else{
+      send(sockfd,message,strlen(message),0);
+    }
+    bzero(message, LENGTH);
   }
 }
 
@@ -56,7 +88,7 @@ int main(int argc, char **argv){
 
   char *ip = "127.0.0.1";
 
-  signal(SIGINT, ctrl_c_exit);
+  signal(SIGINT, my_exit);
 
   //printf("%s",uName);
   struct sockaddr_in server_addr;
@@ -76,6 +108,19 @@ int main(int argc, char **argv){
   login();
   send(sockfd, uName, 32, 0);
   printf("CONNECTED!\n");
+
+  pthread_t recv_thread;
+  pthread_create(&recv_thread, NULL, (void *) recv_handler, NULL);
   
-  
+  pthread_t send_thread;
+  pthread_create(&send_thread, NULL, (void *) send_handler, NULL);
+
+  while(1){
+    if(flag){
+      my_exit();
+    }
+  }
+  close(sockfd);
+
+  return EXIT_SUCCESS;
 }
