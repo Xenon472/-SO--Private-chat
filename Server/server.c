@@ -172,7 +172,7 @@ void *handle_client(void *arg){
 	char *ptr = strtok(buffer, separator);
 	if(strlen(ptr) < 32){
 	  strcpy(destBuffer, ptr);
-	  printf("\ntest->%s\n",destBuffer);
+	  //printf("\ntest->%s\n",destBuffer); //test
 	  if(strcmp(destBuffer, "exit") == 0 || strcmp(destBuffer, "exit\n") == 0 ){
 	    //printf("AAAAARGHHHHHH");
 	    sprintf(msgBuffer, "%s has left\n", client->user->username);
@@ -194,7 +194,7 @@ void *handle_client(void *arg){
 	  continue;
 	}
 	strcpy(msgBuffer, ptr);
-	printf("'%s'\n", msgBuffer); //test
+	//printf("'%s'\n", msgBuffer); //test
 	if(strlen(msgBuffer) > 0){
 	  if(send_to(msgBuffer,destBuffer) == 0){
 	    send_to_uid("ERROR: could not find receiver\n",client->uid);
@@ -215,9 +215,7 @@ void *handle_client(void *arg){
       connected_flag = 0;
     }
     //vari if ecc --TODO--
-    send_to_all(msgBuffer, client->uid);
-
-    
+    //send_to_all(msgBuffer, client->uid);    
     
     bzero(buffer, BUFFER_SIZE);
     bzero(msgBuffer, BUFFER_SIZE);
@@ -273,10 +271,10 @@ int main(void){
     client->uid = uid++;
     client->logged = 0;
 
-    // LOG IN --TODO--
-
     add_client(client);
-    pthread_create(&tid, NULL, &handle_client, (void*)client);
+    if(pthread_create(&tid, NULL, &handle_client, (void*)client) != 0){
+      printf("ERROR: pthread_create.\n");
+    }
 
     //
     sleep(1);    

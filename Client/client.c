@@ -41,6 +41,7 @@ void recv_handler (){
     int receive = recv(sockfd, message, LENGTH, 0);
     if (receive > 0){
       printf("%s", message);
+      fflush(stdout);
     }
     else if(receive == 0){
       my_exit();
