@@ -15,6 +15,7 @@
 #define MAX_CLIENTS 100
 #define BUFFER_SIZE 2048
 #define PORT 4444
+#define HELP_STR "To send a message type the receiver, than two points ':', than the message\nTo show the list of who is online type 'list'\n\n"
 
 static atomic_int clientNumber = 0;
 static int uid = 10;
@@ -70,6 +71,29 @@ void remove_client(clientStr *client){
   pthread_mutex_unlock(&clients_mutex);
 }
 
+void send_online_list(int uid){
+  pthread_mutex_lock(&clients_mutex);
+  char listBuffer[((MAX_CLIENTS+2) * 32)+21];
+  char name[34]; //32+2
+  strcpy(listBuffer,"currently online: ");
+  int sockfd;
+  for(int i=0; i<MAX_CLIENTS; i++){
+    if(clients[i]){
+      if(clients[i]->uid != uid){
+	sprintf(name, "%s, ", clients[i]->user->username);
+	strcat(listBuffer, name);
+      }
+      else{
+	sockfd = clients[i]->sockfd;
+      }
+    }
+  }
+  strcat(listBuffer, "\n");
+  write(sockfd, listBuffer, strlen(listBuffer));
+  bzero(listBuffer, ((MAX_CLIENTS+2) * 32));
+  pthread_mutex_unlock(&clients_mutex);
+}
+
 void send_to_all(char *msg, int uid){
   pthread_mutex_lock(&clients_mutex);
 
@@ -96,7 +120,7 @@ void send_to_uid(char *msg, int uid){
   pthread_mutex_unlock(&clients_mutex);
 }
 
-int send_to(char *msg, char *dest){
+int send_to(char *msg, char *dest){ //deprecated
   int found = 0;
   pthread_mutex_lock(&clients_mutex);
 
@@ -104,6 +128,25 @@ int send_to(char *msg, char *dest){
     if(clients[i]){
       if(!strcmp(clients[i]->user->username, dest)){
 	write(clients[i]->sockfd, msg, strlen(msg));
+	found = 1;
+	break;
+      }
+    }
+  }
+  pthread_mutex_unlock(&clients_mutex);
+  return found;
+}
+
+int send_to_from(char *msg, char *dest, char *sender){
+  int found = 0;
+  pthread_mutex_lock(&clients_mutex);
+
+  for(int i=0; i<MAX_CLIENTS; i++){
+    if(clients[i]){
+      if(!strcmp(clients[i]->user->username, dest)){
+	char buffer[BUFFER_SIZE + 32];
+	sprintf(buffer, "%s->%s\n", sender, msg);
+	write(clients[i]->sockfd, buffer, strlen(buffer));
 	found = 1;
 	break;
       }
@@ -136,7 +179,7 @@ int log_in(clientStr *client){
 
       sprintf(buffer, "%s has joined\n", client->user->username);
       printf("%s", buffer);
-      send_to_all(buffer, client->uid);
+      //send_to_all(buffer, client->uid); //not needed after list comand
       done_flag = 1;
     }
     bzero(buffer, BUFFER_SIZE);
@@ -181,6 +224,16 @@ void *handle_client(void *arg){
 	    connected_flag = 0;
 	    break;
 	  }
+	  else if(strcmp(destBuffer, "help") == 0 || strcmp(destBuffer, "help\n") == 0 ){
+	    sprintf(msgBuffer, HELP_STR);
+	    printf("%s", msgBuffer);
+	    send_to_uid(msgBuffer, client->uid);
+	    continue;
+	  }
+	  else if(strcmp(destBuffer, "list") == 0 || strcmp(destBuffer, "list\n") == 0 ){
+	    send_online_list(client->uid);
+	    continue;
+	  }
 	}
 	else{
 	  send_to_uid("ERROR: invalid receiver\n",client->uid);
@@ -196,7 +249,7 @@ void *handle_client(void *arg){
 	strcpy(msgBuffer, ptr);
 	//printf("'%s'\n", msgBuffer); //test
 	if(strlen(msgBuffer) > 0){
-	  if(send_to(msgBuffer,destBuffer) == 0){
+	  if(send_to_from(msgBuffer,destBuffer,client->user->username) == 0){
 	    send_to_uid("ERROR: could not find receiver\n",client->uid);
 	    //printf("\n%s->%s:%s\n",client->user->username,destBuffer,msgBuffer);
 	    printf("message sent: %s->%s:%s\n", client->user->username, destBuffer, msgBuffer);
