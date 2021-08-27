@@ -57,13 +57,13 @@ void send_handler(){
   while(1){
     fgets(message, LENGTH, stdin);
     msg_trim(message, strlen(message));
-    if (strcmp(message, "exit") == 0) {
-      break;
-    }
-    else{
-      send(sockfd,message,strlen(message),0);
-    }
+
+    send(sockfd,message,strlen(message),0);
     bzero(message, LENGTH);
+    
+    if (strcmp(message, "exit") == 0) {
+      my_exit();
+    }
   }
 }
 

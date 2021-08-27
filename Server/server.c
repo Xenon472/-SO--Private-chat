@@ -217,16 +217,16 @@ void *handle_client(void *arg){
 	  strcpy(destBuffer, ptr);
 	  //printf("\ntest->%s\n",destBuffer); //test
 	  if(strcmp(destBuffer, "exit") == 0 || strcmp(destBuffer, "exit\n") == 0 ){
-	    //printf("AAAAARGHHHHHH");
 	    sprintf(msgBuffer, "%s has left\n", client->user->username);
 	    printf("%s", msgBuffer);
 	    send_to_all(msgBuffer, client->uid);
 	    connected_flag = 0;
 	    break;
+	    //continue;
 	  }
 	  else if(strcmp(destBuffer, "help") == 0 || strcmp(destBuffer, "help\n") == 0 ){
 	    sprintf(msgBuffer, HELP_STR);
-	    printf("%s", msgBuffer);
+	    //printf("%s", msgBuffer);
 	    send_to_uid(msgBuffer, client->uid);
 	    continue;
 	  }

@@ -1,0 +1,5 @@
+to compile: run make from the root directory (SO-Private-Chat)
+
+to execute:
+	1) start the server
+	2) start one or more clients
