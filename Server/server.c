@@ -90,8 +90,7 @@ void send_online_list(int uid){
   int sockfd;
   for(int i=0; i<MAX_CLIENTS; i++){
     if(clients[i]){
-      if(clients[i]->uid != uid){
-		//printf("test logged -> %i\n",clients[i]->logged);
+      if(clients[i]->uid != uid){		
 		if(clients[i]->logged == 1){
 		  sprintf(name, "%s, ", clients[i]->user->username);
 		  strcat(listBuffer, name);
@@ -199,17 +198,13 @@ void populate_users_db(){
 	//file mutex
 	pthread_mutex_lock(&file_mutex);  
 	
-	printf("test pre open\n");
     db_file_ptr = fopen (FILE_NAME, "r");
-    printf("test post open\n");
     //if file does not exist, create it
     if(db_file_ptr == NULL){
 	  db_file_ptr = fopen(FILE_NAME, "wb");
 	  fclose(db_file_ptr);
 	  db_file_ptr = fopen (FILE_NAME, "r");
-	  printf("test creating file\n");
 	}
-	printf("test post create\n");
 	
 	while((currentLineSize = getline(&line, &maxLineSize, db_file_ptr)) != -1){
 	  line[currentLineSize-1] = 0;
@@ -235,7 +230,6 @@ void populate_users_db(){
 		  my_exit();	  
 	  }
     }
-    printf("test post read\n");
     
     fclose(db_file_ptr);
     free(line);
@@ -250,7 +244,6 @@ void add_to_users_db(char *usr, char *psw, char *nme, char *sur){
   //file mutex
   pthread_mutex_lock(&file_mutex);  
   
-  //printf("test file string ->%s\n", file_string); 
   db_file_ptr = fopen (FILE_NAME, "a"); 
   fputs(file_string, db_file_ptr);
   fclose(db_file_ptr);
@@ -265,31 +258,24 @@ void add_to_users_db(char *usr, char *psw, char *nme, char *sur){
   strcpy(newUser->password , psw);
   strcpy(newUser->name , nme);
   strcpy(newUser->surname , sur);
-  printf("Test newUser -> %s,%s,%s,%s\n",newUser->username,newUser->password,newUser->name,newUser->surname);
   //users mutex
   pthread_mutex_lock(&users_mutex);
-  printf("Test Mutex!\n");
   
   for(int i=0; i<MAX_USERS; i++){
     if(!users[i]){
       users[i] = newUser;
-      printf("Test users[%i] -> %s!\n",i,users[i]->username);
       break;
     }
   }  
   pthread_mutex_unlock(&users_mutex); 
-  printf("Test CloseMutex!\n");
 }
 
 int username_already_taken(char *usr){
-  int taken = 0; 
-  printf("Test taken!\n"); 
+  int taken = 0;
   pthread_mutex_lock(&users_mutex);
-  printf("Test Mutex taken!\n");
   
   for(int i=0; i<MAX_USERS; i++){
     if(users[i]){
-	  printf("Test users[%i] -> %s!\n",i,users[i]->username);
       if(strcmp(users[i]->username, usr) == 0){		
 		taken = 1;
 		break;		
@@ -298,20 +284,17 @@ int username_already_taken(char *usr){
   }
   
   pthread_mutex_unlock(&users_mutex);
-  printf("Test CloseMutex taken!\n");
   return taken;
 }
 
 struct userStr * assign_user(char *usr){
   //use only when sure the user exist
   pthread_mutex_lock(&users_mutex);
-  printf("Test Mutex assign!\n");
   
   int index;
   int flag = 0;
   for(int i=0; i<MAX_USERS; i++){
     if(users[i]){
-	  printf("Test users[%i] -> %s!\n",i,users[i]->username);
       if(strcmp(users[i]->username, usr) == 0){
 		index = i;
 		flag = 1;
@@ -321,7 +304,6 @@ struct userStr * assign_user(char *usr){
   }
   
   pthread_mutex_unlock(&users_mutex);
-  printf("Test CloseMutex assign!\n");
   
   if(flag){
 	return users[index];
@@ -537,174 +519,6 @@ int log_in_db(clientStr *client){
     return done_flag;
 }
 
-/*int log_in_file(clientStr *client){
-  char uName[32];
-  char password[32];
-  char name[32];
-  char surname[32]; 
-  char logOrSign[8];
-  int done_flag = 0;
-  int logged_flag = 0;
-  int uName_flag = 0;
-  int password_flag = 0;
-  int name_flag = 0;
-  int surname_flag = 0;
-  while(1){
-	printf("ok1");
-    if(done_flag){
-      break;
-    }
-    //recv(client->sockfd, logOrSign, 8, 0);
-    printf("'%s'\n",logOrSign);
-    if(recv(client->sockfd, logOrSign, 8, 0) <= 0){
-      printf("ERROR: RECEIVE.\n");
-    }
-    else if(strcmp(logOrSign, "sign") == 0 || strcmp(logOrSign, "Sign")){
-      printf("ok2");
-      while(1){
-		  if(usersNumber == MAX_USERS){
-		    printf("ERROR: max users in database reached!\n");
-		    return 0;	  
-		  }
-		  if(uName_flag){
-			send_to_uid("chose your username:\n",client->uid);
-			if(recv(client->sockfd, uName, 32, 0) <= 0){
-			  printf("ERROR: RECEIVE.\n");
-			  continue;
-			}
-			else if(strlen(uName) <  2 || strlen(uName) >= 32-1){
-			  printf("ERROR: Invalid username.\n");
-			  send_to_uid("ERROR: Invalid username.\n",client->uid);
-			  bzero(uName, 32);
-			  continue;
-			}
-			else if(username_already_taken(uName)){
-			  printf("ERROR: username already taken.\n");
-			  send_to_uid("ERROR: username already taken.\n",client->uid);
-			  bzero(uName, 32);
-			  continue;
-			}
-			else{
-			  uName_flag = 1;
-			}
-		  }
-		  if(password_flag){
-		  send_to_uid("chose your password:\n",client->uid);
-			if(recv(client->sockfd, password, 32, 0) <= 0){
-			  printf("ERROR: RECEIVE.\n");
-			  continue;
-			}
-			else if(strlen(password) <  2 || strlen(password) >= 32-1){
-			  printf("ERROR: Invalid password.\n");
-			  send_to_uid("ERROR: Invalid password.\n",client->uid);
-			  bzero(password, 32);
-			  continue;
-			}
-			else{
-			  password_flag = 1;
-			}
-		  }
-		  if(name_flag){
-			send_to_uid("enter your name:.\n",client->uid);
-			if(recv(client->sockfd, name, 32, 0) <= 0){
-			  printf("ERROR: RECEIVE.\n");
-			  continue;
-			}
-			else if(strlen(name) <  2 || strlen(name) >= 32-1){
-			  printf("ERROR: Invalid name.\n");
-			  send_to_uid("ERROR: Invalid name.\n",client->uid);
-			  bzero(name, 32);
-			  continue;
-			}
-			else{
-			  name_flag = 1;
-			}
-		  }
-		  if(surname_flag){
-			send_to_uid("enter your surname:.\n",client->uid);
-			if(recv(client->sockfd, surname, 32, 0) <= 0){
-			  printf("ERROR: RECEIVE.\n");
-			  continue;
-			}
-			else if(strlen(surname) <  2 || strlen(surname) >= 32-1){
-			  printf("ERROR: Invalid surname.\n");
-			  send_to_uid("ERROR: Invalid surname.\n",client->uid);
-			  bzero(surname, 32);
-			  continue;
-			}
-			else{
-			  surname_flag = 1;
-			  break;
-			}
-		  }	  
-	  }	  
-
-	  add_to_users_db(uName,password,name,surname);
-
-	  client->user = assign_user(uName);
-	  done_flag = 1;
-    }
-    else if(strcmp(logOrSign, "log") == 0 || strcmp(logOrSign, "login") || strcmp(logOrSign, "Log") || strcmp(logOrSign, "Login")){
-		while(1){
-		  if(logged_flag){
-				done_flag = 1;
-				break;
-		  }
-		  if(uName_flag){
-			send_to_uid("enter your username:\n",client->uid);
-			if(recv(client->sockfd, uName, 32, 0) <= 0){
-			  printf("ERROR: RECEIVE.\n");
-			  continue;
-			}
-			else if(strlen(uName) <  2 || strlen(uName) >= 32-1){
-			  printf("ERROR: Invalid username.\n");
-			  send_to_uid("ERROR: Invalid username.\n",client->uid);
-			  bzero(uName, 32);
-			  continue;
-			}
-			else{
-			  uName_flag = 1;
-			}
-		  }
-		  if(password_flag){
-			send_to_uid("enter your password:\n",client->uid);
-			if(recv(client->sockfd, password, 32, 0) <= 0){
-			  printf("ERROR: RECEIVE.\n");
-			  continue;
-			}
-			else if(strlen(password) <  2 || strlen(password) >= 32-1){
-			  printf("ERROR: Invalid password.\n");
-			  send_to_uid("ERROR: Invalid password.\n",client->uid);
-			  bzero(password, 32);
-			  continue;
-			}
-			else{
-			  password_flag = 1;
-			}
-		  }
-		  if(check_credentials(uName,password)){
-			  client->user = assign_user(uName);
-			  logged_flag = 1;
-			  break;
-		  }
-		  else{
-			  printf("ERROR: incorrect username or password.\n");
-			  send_to_uid("ERROR: incorrect username or password.\nretry.\n",client->uid);
-			  uName_flag = 0;
-			  password_flag = 0;
-			  bzero(uName, 32);
-			  bzero(password, 32);
-		  } 
-		}
-	}
-	else{
-	  printf("ERROR: choose login or signup.\n");
-	  send_to_uid("ERROR: choose login or signup.\n",client->uid);
-	}
-  }
-  return 1;
-}*/
-
 int log_in(clientStr *client){  
   char buffer[BUFFER_SIZE];
   char uName[32];
@@ -737,11 +551,7 @@ int log_in(clientStr *client){
 }
 
 void *handle_client(void *arg){
-  printf("test handle client\n");
   clientStr *client = (clientStr*)arg;
-  //client->user = (userStr *)malloc(sizeof(userStr));
-  //userStr *currentUser = (userStr *)malloc(sizeof(userStr));
-  //client->user = currentUser;
   
   int logInFlag = log_in_db(client);
   int connected_flag = 0;
@@ -766,9 +576,7 @@ void *handle_client(void *arg){
       if(strlen(buffer) > 0){
 	char *ptr = strtok(buffer, msgSeparator);
 	if(strlen(ptr) < 32){
-	  printf("\ntest ptr->%s\n",ptr); //test
 	  strcpy(destBuffer, ptr);
-	  printf("\ntest->%s\n",destBuffer); //test
 	  if(strcmp(destBuffer, "exit") == 0 || strcmp(destBuffer, "exit\n") == 0 ){
 	    sprintf(msgBuffer, "%s has left\n", client->user->username);
 	    printf("%s", msgBuffer);
@@ -799,16 +607,13 @@ void *handle_client(void *arg){
 	  bzero(ptr,32);
 	  continue;
 	}
-	//printf("'%s'\n", ptr);  //test
 	ptr = strtok(NULL, "");
-	//printf("'%s'\n", ptr);	//test
 	if(ptr==NULL){
 	  send_to_uid("ERROR: invalid formatting\n",client->uid);
 	  bzero(ptr,32);
 	  continue;
 	}
 	strcpy(msgBuffer, ptr);
-	//printf("'%s'\n", msgBuffer); //test
 	if(strlen(msgBuffer) > 0){
 	  if(send_to_from(msgBuffer,destBuffer,client->user->username) == 0){
 	    send_to_uid("ERROR: could not find receiver\n",client->uid);
@@ -875,20 +680,15 @@ int main(void){
 
   //opening database file
   populate_users_db();
-  printf("test post populte\n");
   //overwriting ctrl+c  
   signal(SIGINT, my_exit);
 
   //main loop
   while(1){
-	printf("test while\n");
     socklen_t cliLen = sizeof(client_addr);
-    printf("test socklen\n");
     connfd = accept(listenfd,(struct sockaddr*)&client_addr, &cliLen);
-	printf("test connection\n");
     //check client numbers,	
 	if(clientNumber < MAX_CLIENTS){
-		printf("test if\n");
 		//setting up client
 		clientStr *client = (clientStr *)malloc(sizeof(clientStr));
 		client->address = client_addr;
@@ -897,7 +697,6 @@ int main(void){
 		client->logged = 0;
 
 		add_client(client);
-		printf("test pre handle client\n");
 		if(pthread_create(&tid, NULL, &handle_client, (void*)client) != 0){
 		  printf("ERROR: pthread_create.\n");
 		}
