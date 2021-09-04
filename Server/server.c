@@ -91,7 +91,8 @@ void send_online_list(int uid){
   for(int i=0; i<MAX_CLIENTS; i++){
     if(clients[i]){
       if(clients[i]->uid != uid){
-		if(clients[i]->user){
+		//printf("test logged -> %i\n",clients[i]->logged);
+		if(clients[i]->logged == 1){
 		  sprintf(name, "%s, ", clients[i]->user->username);
 		  strcat(listBuffer, name);
 	    }
@@ -683,6 +684,7 @@ void *handle_client(void *arg){
 
   if(logInFlag){
     connected_flag = 1;
+    client->logged = 1;
     send_to_uid("Successdully logged in!\n",client->uid);
   }
   clientNumber++;
@@ -710,21 +712,24 @@ void *handle_client(void *arg){
 	  }
 	  else if(strcmp(destBuffer, "help") == 0 || strcmp(destBuffer, "help\n") == 0 ){
 	    sprintf(msgBuffer, HELP_STR);
-	    //printf("%s", msgBuffer);
 	    send_to_uid(msgBuffer, client->uid);
+	    bzero(ptr,32);
 	    continue;
 	  }
 	  else if(strcmp(destBuffer, "list") == 0 || strcmp(destBuffer, "list\n") == 0 ){
 	    send_online_list(client->uid);
+	    bzero(ptr,32);
 	    continue;
 	  }
 	  else if(strcmp(destBuffer, "users") == 0 || strcmp(destBuffer, "users\n") == 0 ){
 	    send_users_list(client);
+	    bzero(ptr,32);
 	    continue;
 	  }
 	}
 	else{
 	  send_to_uid("ERROR: invalid receiver\n",client->uid);
+	  bzero(ptr,32);
 	  continue;
 	}
 	//printf("'%s'\n", ptr);  //test
@@ -732,6 +737,7 @@ void *handle_client(void *arg){
 	//printf("'%s'\n", ptr);	//test
 	if(ptr==NULL){
 	  send_to_uid("ERROR: invalid formatting\n",client->uid);
+	  bzero(ptr,32);
 	  continue;
 	}
 	strcpy(msgBuffer, ptr);
