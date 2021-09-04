@@ -302,24 +302,6 @@ int username_already_taken(char *usr){
   return taken;
 }
 
-/*int check_credentials(char *usr, char *psw){
-  int found = 0;
-  pthread_mutex_lock(&users_mutex);
-
-  for(int i=0; i<MAX_USERS; i++){
-    if(users[i]){
-      if(strcmp(users[i]->username, usr) == 0){
-		if(strcmp(users[i]->password, psw) == 0){
-		  found = 1;
-		  break;
-		}
-      }
-    }
-  }  
-  pthread_mutex_unlock(&users_mutex);
-  return found;
-}*/
-
 struct userStr * assign_user(char *usr){
   //use only when sure the user exist
   pthread_mutex_lock(&users_mutex);
@@ -345,6 +327,45 @@ struct userStr * assign_user(char *usr){
 	return users[index];
   }
   return NULL;
+}
+
+int check_credentials(char *usr, char *psw){
+  int found = 0;
+  pthread_mutex_lock(&users_mutex);
+
+  for(int i=0; i<MAX_USERS; i++){
+    if(users[i]){
+      if(strcmp(users[i]->username, usr) == 0){
+		if(strcmp(users[i]->password, psw) == 0){
+		  found = 1;
+		  break;
+		}
+      }
+    }
+  }  
+  pthread_mutex_unlock(&users_mutex);
+  return found;
+}
+
+int already_logged(char *usr){
+  int flag = 0;
+  
+  pthread_mutex_lock(&clients_mutex);
+  
+  for(int i=0; i<MAX_CLIENTS; i++){
+    if(clients[i]){      
+	  if(clients[i]->logged == 1){
+		if(strcmp(clients[i]->user->username, usr) == 0){
+		  flag = 1;
+		  break;
+		}
+	  }
+    }
+  }
+  
+  pthread_mutex_unlock(&clients_mutex); 
+   
+  return flag;
 }
 
 int sign_client(clientStr *client){
@@ -440,16 +461,59 @@ int sign_client(clientStr *client){
   return 1;
 }
 
+int log_client(clientStr *client){
+  char uName[32];
+  char password[32];
+  while(1){
+	  //username and password
+	  send_to_uid("insert your username:\n",client->uid);
+	  if(recv(client->sockfd, uName, 32, 0) <= 0){
+	    printf("ERROR: RECEIVE.\n");
+	    continue;
+	  }	  
+	  send_to_uid("insert your password:\n",client->uid);
+	  if(recv(client->sockfd, password, 32, 0) <= 0){
+	    printf("ERROR: RECEIVE.\n");
+	    continue;
+	  }
+	  else if(strlen(uName) <  2 || strlen(uName) >= 32-1  || strlen(password) <  2 || strlen(password) >= 32-1){
+	    printf("ERROR: Invalid username or password formatting.\n");
+	    send_to_uid("ERROR: Invalid username or password formatting.\n",client->uid);
+	    bzero(uName, 32);
+	    bzero(password, 32);
+	    continue;
+	  }
+	  else{
+		if(already_logged(uName)){
+		  printf("ERROR: User already logged!\n");
+	      send_to_uid("ERROR: User already logged!\n",client->uid);
+		  return 0;
+		}
+		if(check_credentials(uName, password)){
+		  client->user = assign_user(uName);
+		  return 1;
+		}
+		else{
+		  printf("ERROR: Invalid username or password.\n");
+	      send_to_uid("ERROR: Invalid username or password.\n",client->uid);
+	      return 0;
+		}
+	  }	  
+  }
+  return 0;
+}
+
 int log_in_db(clientStr *client){
 	char logOrSign[8];
 	int done_flag = 0;
 	
-	send_to_uid("Welcome! do you want to sign or log?\n",client->uid);
+	send_to_uid("Welcome! ",client->uid);
 	
 	while(1){
 	  if(done_flag){
         break;
       }
+      send_to_uid("do you want to sign or log?\n",client->uid);
       bzero(logOrSign, 8);
       //int receive = recv(client->sockfd, buffer, BUFFER_SIZE, 0);
       if(recv(client->sockfd, logOrSign, 8, 0) <= 0){
@@ -459,8 +523,11 @@ int log_in_db(clientStr *client){
         printf("ERROR: Incorrect comand.\n");
         send_to_uid("ERROR: Incorrect comand.\n",client->uid);
       }
-      else if(strcmp(logOrSign,"sign")==0 || strcmp(logOrSign,"Sign")==0){
+      else if(strcmp(logOrSign,"sign")==0 || strcmp(logOrSign,"Sign")==0 || strcmp(logOrSign,"signup")==0 || strcmp(logOrSign,"Signup")==0){
         done_flag = sign_client(client);
+      }
+      else if(strcmp(logOrSign,"log")==0 || strcmp(logOrSign,"Log")==0 || strcmp(logOrSign,"login")==0 || strcmp(logOrSign,"Login")==0){
+        done_flag = log_client(client);
       }
       else {
 		printf("ERROR: Incorrect comand.\n");
