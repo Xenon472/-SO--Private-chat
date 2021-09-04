@@ -76,7 +76,7 @@ void login(){
     if (strlen(uName) > USER_DATA_LENGTH - 2 || strlen(uName) < 2){
       printf("Name must be less than 30 and more than 2 characters.\n");
       if(strlen(uName) > USER_DATA_LENGTH - 2){
-		stdin_clean(stdin);
+	stdin_clean(stdin);
       }
     }
     else{
@@ -106,10 +106,8 @@ int main(int argc, char **argv){
     return EXIT_FAILURE;
   }
     
-  /*  
   login();
   send(sockfd, uName, 32, 0);
-  */
   printf("CONNECTED!\n");
 
   pthread_t recv_thread;
