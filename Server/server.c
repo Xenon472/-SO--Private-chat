@@ -16,9 +16,10 @@
 #define MAX_USERS 200
 #define BUFFER_SIZE 2048
 #define PORT 4444
-#define HELP_STR "To send a message type the receiver, than two points ':', than the message\nTo show the list of who is online type 'list'\n\n"
+#define HELP_STR "To send a message type the receiver, than two points ':', than the message\nTo show the list of who is online type 'list'\nto show the list of users type 'users'\n\n"
 #define OK_STRING "Succesfully logged in!\n\n"
 #define FILE_NAME "database.txt"
+#define NEW_MSG_LINE "-----MESSAGES-FROM-LAST-ONLINE-----\n"
 
 static atomic_int clientNumber = 0;
 static atomic_int usersNumber = 0;
@@ -44,16 +45,25 @@ typedef struct clientStr{
 
 
 FILE *db_file_ptr;
+FILE *client_file_ptr;
+FILE *buffer_file;
 clientStr *clients[MAX_CLIENTS];
 userStr *users[MAX_USERS];
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t users_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+//declaration of functions
+void save_msg(char *msg, char *usr);
+void send_to_all(char *msg);
+void save_all();
+
 
 void my_exit(){
-  //fclose(db_file_ptr);
-  exit(0);
+  send_to_all("ERROR: server is down\n");
+  save_all();
+  
+  exit(0);  
 }
 
 void add_client(clientStr *client){
@@ -74,7 +84,7 @@ void remove_client(clientStr *client){
   for(int i=0; i<MAX_CLIENTS; i++){
     if(clients[i]){
       if(clients[i]->uid == client->uid){
-	clients[i] = NULL;
+		clients[i] = NULL;
         break;
       }
     }
@@ -107,16 +117,29 @@ void send_online_list(int uid){
   pthread_mutex_unlock(&clients_mutex);
 }
 
-void send_to_all(char *msg, int uid){
+void send_to_all_except(char *msg, int uid){ //deprecated
   pthread_mutex_lock(&clients_mutex);
 
   for(int i=0; i<MAX_CLIENTS; i++){
     if(clients[i]){
       if(clients[i]->uid != uid){
-	write(clients[i]->sockfd, msg, strlen(msg));
+		write(clients[i]->sockfd, msg, strlen(msg));
       }
     }
   }
+  
+  pthread_mutex_unlock(&clients_mutex);
+}
+
+void send_to_all(char *msg){
+  pthread_mutex_lock(&clients_mutex);
+
+  for(int i=0; i<MAX_CLIENTS; i++){
+    if(clients[i]){
+	  write(clients[i]->sockfd, msg, strlen(msg));
+    }
+  }
+  
   pthread_mutex_unlock(&clients_mutex);
 }
 
@@ -156,12 +179,15 @@ int send_to_from(char *msg, char *dest, char *sender){
 
   for(int i=0; i<MAX_CLIENTS; i++){
     if(clients[i]){
-      if(!strcmp(clients[i]->user->username, dest)){
-	char buffer[BUFFER_SIZE + 32];
-	sprintf(buffer, "%s->%s\n", sender, msg);
-	write(clients[i]->sockfd, buffer, strlen(buffer));
-	found = 1;
-	break;
+      if(strcmp(clients[i]->user->username, dest) == 0){
+		char buffer[BUFFER_SIZE + 32];
+		sprintf(buffer, "%s->%s\n", sender, msg);
+		write(clients[i]->sockfd, buffer, strlen(buffer));
+		//save message
+		save_msg(buffer, dest);
+		
+		found = 1;
+		break;
       }
     }
   }
@@ -184,6 +210,50 @@ void send_users_list(clientStr *client){
   write(client->sockfd, listBuffer, strlen(listBuffer));
   bzero(listBuffer, ((MAX_USERS+2) * 32)+21);
   pthread_mutex_unlock(&users_mutex);
+}
+
+int send_offline(char *msg, char *dest, char *sender){
+  int found = 0;
+  pthread_mutex_lock(&users_mutex);
+
+  for(int i=0; i<MAX_USERS; i++){
+    if(users[i]){
+      if(strcmp(users[i]->username, dest) == 0){
+		char buffer[BUFFER_SIZE + 32];
+		sprintf(buffer, "%s->%s\n", sender, msg);
+		//save message
+		save_msg(buffer, dest);
+		
+		found = 1;
+		break;
+      }
+    }
+  }
+  pthread_mutex_unlock(&users_mutex);
+  return found;
+}
+
+void save_all(){
+  pthread_mutex_lock(&clients_mutex);
+
+  for(int i=0; i<MAX_CLIENTS; i++){
+    if(clients[i]){
+	  if(clients[i]->logged == 1){
+	    save_msg(NEW_MSG_LINE, clients[i]->user->username);
+	  }
+    }
+  }
+  
+  pthread_mutex_unlock(&clients_mutex);
+}
+
+void save_msg(char *msg, char *usr){
+  char file[32+4];
+    
+  sprintf(file, "%s.txt", usr);
+  client_file_ptr = fopen(file, "a");
+  fputs(msg, client_file_ptr);
+  fclose(client_file_ptr);
 }
 
 void populate_users_db(){
@@ -287,7 +357,32 @@ int username_already_taken(char *usr){
   return taken;
 }
 
-struct userStr * assign_user(char *usr){
+void populate_user_field(clientStr *client, char *usr){
+  pthread_mutex_lock(&users_mutex);
+  
+  int index;
+  int flag = 0;
+  for(int i=0; i<MAX_USERS; i++){
+    if(users[i]){
+      if(strcmp(users[i]->username, usr) == 0){
+		index = i;
+		flag = 1;
+		break;
+      }
+    }
+  }
+  
+  pthread_mutex_unlock(&users_mutex);
+  
+  if(flag){
+	strcpy(client->user->username, users[index]->username);
+	strcpy(client->user->password, users[index]->password);
+	strcpy(client->user->name, users[index]->name);
+	strcpy(client->user->surname, users[index]->surname);
+  }
+}
+
+struct userStr * assign_user(char *usr){ //deprecated
   //use only when sure the user exist
   pthread_mutex_lock(&users_mutex);
   
@@ -315,7 +410,7 @@ int check_credentials(char *usr, char *psw){
   int found = 0;
   pthread_mutex_lock(&users_mutex);
 
-  for(int i=0; i<MAX_USERS; i++){
+  for(int i=0; i<MAX_USERS; i++){	
     if(users[i]){
       if(strcmp(users[i]->username, usr) == 0){
 		if(strcmp(users[i]->password, psw) == 0){
@@ -325,6 +420,7 @@ int check_credentials(char *usr, char *psw){
       }
     }
   }  
+  
   pthread_mutex_unlock(&users_mutex);
   return found;
 }
@@ -350,11 +446,49 @@ int already_logged(char *usr){
   return flag;
 }
 
+void load_old_msgs(clientStr *client){
+  char file[32+4];
+  char bufferFile[32+4+8];  
+  char *line;
+  line = (char*) malloc(BUFFER_SIZE*sizeof(char));
+  size_t maxLineSize = BUFFER_SIZE;
+  
+  sprintf(file, "%s.txt", client->user->username);
+  sprintf(bufferFile, "%s_buffer.txt", client->user->username);
+  
+  client_file_ptr = fopen(file, "r");  
+  if(client_file_ptr == NULL){
+	printf("ERROR: somehow client file is missing!");
+	client_file_ptr = fopen(file, "wb");
+	fclose(client_file_ptr);
+	return;
+  }
+  buffer_file = fopen(bufferFile, "w");
+  
+  while((getline(&line, &maxLineSize, client_file_ptr)) != -1){
+	//avoid the NEW_MSG_LINE
+	if(strcmp(line, NEW_MSG_LINE) != 0){
+	  fputs(line, buffer_file);
+	}
+	//send the old msg to the client
+	write(client->sockfd, line, strlen(line));	  
+	bzero(line, BUFFER_SIZE);	
+  }  
+  fclose(client_file_ptr);
+  fclose(buffer_file);
+  
+  free(line);
+  
+  remove(file);  
+  rename(bufferFile, file);
+}
+
 int sign_client(clientStr *client){
   char uName[32];
   char password[32];
   char name[32];
   char surname[32];
+  char file[32+4];
 
   int uName_flag = 0;
   int password_flag = 0;
@@ -370,6 +504,7 @@ int sign_client(clientStr *client){
 	  send_to_uid("chose your username:\n",client->uid);
 	  if(recv(client->sockfd, uName, 32, 0) <= 0){
 	    printf("ERROR: RECEIVE.\n");
+	    return 0;
 	    continue;
 	  }
 	  else if(strlen(uName) <  2 || strlen(uName) >= 32-1){
@@ -392,6 +527,7 @@ int sign_client(clientStr *client){
 	  send_to_uid("chose your password:\n",client->uid);
 		if(recv(client->sockfd, password, 32, 0) <= 0){
 		  printf("ERROR: RECEIVE.\n");
+		  return 0;
 		  continue;
 		}
 	    else if(strlen(password) <  2 || strlen(password) >= 32-1){
@@ -405,9 +541,10 @@ int sign_client(clientStr *client){
 		}
 	}
 	if(!name_flag){
-	  send_to_uid("enter your name:.\n",client->uid);
+	  send_to_uid("enter your name:\n",client->uid);
 		if(recv(client->sockfd, name, 32, 0) <= 0){
 		  printf("ERROR: RECEIVE.\n");
+		  return 0;
 		  continue;
 		}
 		else if(strlen(name) <  2 || strlen(name) >= 32-1){
@@ -424,6 +561,7 @@ int sign_client(clientStr *client){
 	  send_to_uid("enter your surname:\n",client->uid);
 	  if(recv(client->sockfd, surname, 32, 0) <= 0){
 		printf("ERROR: RECEIVE.\n");
+		return 0;
 	    continue;
 	  }
 	  else if(strlen(surname) <  2 || strlen(surname) >= 32-1){
@@ -439,7 +577,14 @@ int sign_client(clientStr *client){
 	}
   }
   add_to_users_db(uName,password,name,surname);
-  client->user = assign_user(uName);
+  
+  populate_user_field(client, uName);
+  
+  //create offline message database
+  sprintf(file, "%s.txt", uName);
+  client_file_ptr = fopen(file, "wb");
+  fclose(client_file_ptr);
+  
   return 1;
 }
 
@@ -449,20 +594,24 @@ int log_client(clientStr *client){
   while(1){
 	  //username and password
 	  send_to_uid("insert your username:\n",client->uid);
+	  bzero(uName,32);
+	  bzero(password,32);
 	  if(recv(client->sockfd, uName, 32, 0) <= 0){
 	    printf("ERROR: RECEIVE.\n");
+	    return 0;
 	    continue;
 	  }	  
 	  send_to_uid("insert your password:\n",client->uid);
 	  if(recv(client->sockfd, password, 32, 0) <= 0){
 	    printf("ERROR: RECEIVE.\n");
+	    return 0;
 	    continue;
 	  }
 	  else if(strlen(uName) <  2 || strlen(uName) >= 32-1  || strlen(password) <  2 || strlen(password) >= 32-1){
 	    printf("ERROR: Invalid username or password formatting.\n");
 	    send_to_uid("ERROR: Invalid username or password formatting.\n",client->uid);
-	    bzero(uName, 32);
-	    bzero(password, 32);
+	    //bzero(uName, 32);
+	    //bzero(password, 32);
 	    continue;
 	  }
 	  else{
@@ -472,7 +621,7 @@ int log_client(clientStr *client){
 		  return 0;
 		}
 		if(check_credentials(uName, password)){
-		  client->user = assign_user(uName);
+		  populate_user_field(client, uName);
 		  return 1;
 		}
 		else{
@@ -500,6 +649,7 @@ int log_in_db(clientStr *client){
       //int receive = recv(client->sockfd, buffer, BUFFER_SIZE, 0);
       if(recv(client->sockfd, logOrSign, 8, 0) <= 0){
         printf("ERROR: RECEIVE.\n");
+        return 0;
       }
       else if(strlen(logOrSign) <  2 || strlen(logOrSign) >= 8-1){
         printf("ERROR: Incorrect comand.\n");
@@ -519,50 +669,22 @@ int log_in_db(clientStr *client){
     return done_flag;
 }
 
-int log_in(clientStr *client){  
-  char buffer[BUFFER_SIZE];
-  char uName[32];
-  int done_flag = 0;
-  while(1){
-    if(done_flag){
-      break;
-    }
-    bzero(uName, 32);
-    //int receive = recv(client->sockfd, buffer, BUFFER_SIZE, 0);
-    if(recv(client->sockfd, uName, 32, 0) <= 0){
-      printf("ERROR: RECEIVE.\n");
-    }
-    else if(strlen(uName) <  2 || strlen(uName) >= 32-1){
-      printf("ERROR: Incorrect username.\n");
-      send_to_uid("ERROR: Incorrect username.\n",client->uid);
-    }
-    else{
-
-      strcpy(client->user->username, uName);
-
-      sprintf(buffer, "%s has joined\n", client->user->username);
-      printf("%s", buffer);
-      //send_to_all(buffer, client->uid); //not needed after list comand
-      done_flag = 1;
-    }
-    bzero(buffer, BUFFER_SIZE);
-  }
-  return 1;
-}
-
 void *handle_client(void *arg){
   clientStr *client = (clientStr*)arg;
+  client->user = (userStr *)malloc(sizeof(userStr));
   
   int logInFlag = log_in_db(client);
   int connected_flag = 0;
   char buffer[BUFFER_SIZE];
   char msgBuffer[BUFFER_SIZE];
-  char destBuffer[32]; 
+  char destBuffer[32];
+  char saveBuffer[BUFFER_SIZE+32+1];
 
   if(logInFlag){
     connected_flag = 1;
     client->logged = 1;
-    send_to_uid("Successdully logged in!\n",client->uid);
+    send_to_uid("Successfully logged in!\n",client->uid);
+    load_old_msgs(client);
   }
   clientNumber++;
   while(1){
@@ -573,60 +695,71 @@ void *handle_client(void *arg){
     //Receive:
     int receive = recv(client->sockfd, buffer, BUFFER_SIZE, 0);
     if (receive > 0){      
-      if(strlen(buffer) > 0){
-	char *ptr = strtok(buffer, msgSeparator);
-	if(strlen(ptr) < 32){
-	  strcpy(destBuffer, ptr);
-	  if(strcmp(destBuffer, "exit") == 0 || strcmp(destBuffer, "exit\n") == 0 ){
-	    sprintf(msgBuffer, "%s has left\n", client->user->username);
-	    printf("%s", msgBuffer);
-	    send_to_all(msgBuffer, client->uid);
-	    connected_flag = 0;
-	    break;
-	    //continue;
-	  }
-	  else if(strcmp(destBuffer, "help") == 0 || strcmp(destBuffer, "help\n") == 0 ){
-	    sprintf(msgBuffer, HELP_STR);
-	    send_to_uid(msgBuffer, client->uid);
-	    bzero(ptr,32);
-	    continue;
-	  }
-	  else if(strcmp(destBuffer, "list") == 0 || strcmp(destBuffer, "list\n") == 0 ){
-	    send_online_list(client->uid);
-	    bzero(ptr,32);
-	    continue;
-	  }
-	  else if(strcmp(destBuffer, "users") == 0 || strcmp(destBuffer, "users\n") == 0 ){
-	    send_users_list(client);
-	    bzero(ptr,32);
-	    continue;
-	  }
-	}
-	else{
-	  send_to_uid("ERROR: invalid receiver\n",client->uid);
-	  bzero(ptr,32);
-	  continue;
-	}
-	ptr = strtok(NULL, "");
-	if(ptr==NULL){
-	  send_to_uid("ERROR: invalid formatting\n",client->uid);
-	  bzero(ptr,32);
-	  continue;
-	}
-	strcpy(msgBuffer, ptr);
-	if(strlen(msgBuffer) > 0){
-	  if(send_to_from(msgBuffer,destBuffer,client->user->username) == 0){
-	    send_to_uid("ERROR: could not find receiver\n",client->uid);
-	    //printf("\n%s->%s:%s\n",client->user->username,destBuffer,msgBuffer);
-	    printf("message sent: %s->%s:%s\n", client->user->username, destBuffer, msgBuffer);
-	  }
-	}
+      if(strlen(buffer) > 0){		
+		char *ptr = strtok(buffer, msgSeparator);
+		if(strlen(ptr) < 32){		  
+		  bzero(destBuffer,32);
+		  strcpy(destBuffer, ptr);
+		  if(strcmp(destBuffer, "exit") == 0 || strcmp(destBuffer, "exit\n") == 0 ){
+			sprintf(msgBuffer, "%s has left\n", client->user->username);
+			printf("%s", msgBuffer);
+			//send_to_all_except(msgBuffer, client->uid);
+			save_msg(NEW_MSG_LINE, client->user->username);
+			connected_flag = 0;
+			break;
+			//continue;
+		  }
+		  else if(strcmp(destBuffer, "help") == 0 || strcmp(destBuffer, "help\n") == 0 ){
+			sprintf(msgBuffer, HELP_STR);
+			send_to_uid(msgBuffer, client->uid);
+			bzero(ptr,32);
+			continue;
+		  }
+		  else if(strcmp(destBuffer, "list") == 0 || strcmp(destBuffer, "list\n") == 0 ){
+			send_online_list(client->uid);
+			bzero(ptr,32);
+			continue;
+		  }
+		  else if(strcmp(destBuffer, "users") == 0 || strcmp(destBuffer, "users\n") == 0 ){
+			send_users_list(client);
+			bzero(ptr,32);
+			continue;
+		  }
+		}
+		else{
+		  send_to_uid("ERROR: invalid receiver\n",client->uid);
+		  bzero(ptr,32);
+		  continue;
+		}
+		ptr = strtok(NULL, "");
+		if(ptr==NULL){
+		  send_to_uid("ERROR: invalid formatting\n",client->uid);
+		  bzero(buffer,BUFFER_SIZE);
+		  continue;
+		}
+		strcpy(msgBuffer, ptr);
+		if(strlen(msgBuffer) > 0){
+		  if(send_to_from(msgBuffer,destBuffer,client->user->username) == 0){
+			if(send_offline(msgBuffer,destBuffer,client->user->username) == 0){
+			  send_to_uid("ERROR: receiver not in database\n",client->uid);
+			}
+			else{
+			  sprintf(saveBuffer, "%s:%s\n", destBuffer, msgBuffer);
+			  save_msg(saveBuffer, client->user->username);
+			}
+		  }
+		  else{
+			sprintf(saveBuffer, "%s:%s\n", destBuffer, msgBuffer);
+			save_msg(saveBuffer, client->user->username);
+		  }
+		}
       }
     }
     else if (receive == 0){
       sprintf(msgBuffer, "%s has left\n", client->user->username);
       printf("%s", msgBuffer);
-      send_to_all(msgBuffer, client->uid);
+      save_msg(NEW_MSG_LINE, client->user->username);
+      //send_to_all_except(msgBuffer, client->uid);
       connected_flag = 0;
     }
     else {
