@@ -67,24 +67,6 @@ void send_handler(){
   }
 }
 
-void login(){  
-  while(1){    
-    printf("Enter your username: ");
-    fgets(uName, USER_DATA_LENGTH, stdin);
-    msg_trim(uName, strlen(uName));
-    
-    if (strlen(uName) > USER_DATA_LENGTH - 2 || strlen(uName) < 2){
-      printf("Name must be less than 30 and more than 2 characters.\n");
-      if(strlen(uName) > USER_DATA_LENGTH - 2){
-		stdin_clean(stdin);
-      }
-    }
-    else{
-      break;
-    }
-  }
-}
-
 int main(int argc, char **argv){
 
   char *ip = "127.0.0.1";
@@ -105,11 +87,7 @@ int main(int argc, char **argv){
     printf("ERROR: connection failed!\n");
     return EXIT_FAILURE;
   }
-    
-  /*  
-  login();
-  send(sockfd, uName, 32, 0);
-  */
+
   printf("CONNECTED!\n");
 
   pthread_t recv_thread;
