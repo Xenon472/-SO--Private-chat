@@ -57,13 +57,27 @@ pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
 void save_msg(char *msg, char *usr);
 void send_to_all(char *msg);
 void save_all();
-
+void free_all();
 
 void my_exit(){
   send_to_all("ERROR: server is down\n");
   save_all();
+  free_all();
   
   exit(0);  
+}
+
+void free_all(){
+  pthread_mutex_lock(&clients_mutex);
+
+  for(int i=0; i<MAX_CLIENTS; i++){
+    if(clients[i]){
+      free(clients[i]->user);
+      free(clients[i]);
+    }
+  }
+   
+  pthread_mutex_unlock(&clients_mutex);
 }
 
 void add_client(clientStr *client){
