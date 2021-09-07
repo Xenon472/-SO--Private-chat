@@ -133,7 +133,7 @@ void send_online_list(int uid){
   pthread_mutex_unlock(&clients_mutex);
 }
 
-void send_to_all_except(char *msg, int uid){ //deprecated
+void send_to_all_except(char *msg, int uid){ //not used except for debug
   pthread_mutex_lock(&clients_mutex);
 
   for(int i=0; i<MAX_CLIENTS; i++){
@@ -170,23 +170,6 @@ void send_to_uid(char *msg, int uid){
     }
   }
   pthread_mutex_unlock(&clients_mutex);
-}
-
-int send_to(char *msg, char *dest){ //deprecated
-  int found = 0;
-  pthread_mutex_lock(&clients_mutex);
-
-  for(int i=0; i<MAX_CLIENTS; i++){
-    if(clients[i]){
-      if(!strcmp(clients[i]->user->username, dest)){
-		write(clients[i]->sockfd, msg, strlen(msg));
-		found = 1;
-		break;
-      }
-    }
-  }
-  pthread_mutex_unlock(&clients_mutex);
-  return found;
 }
 
 int send_to_from(char *msg, char *dest, char *sender){
