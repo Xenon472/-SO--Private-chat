@@ -72,8 +72,10 @@ void free_all(){
 
   for(int i=0; i<MAX_CLIENTS; i++){
     if(clients[i]){
-      free(clients[i]->user);
-      free(clients[i]);
+	  if(clients[i]->logged == 1){
+        free(clients[i]->user);        
+	  }
+	  free(clients[i]);
     }
   }
    
